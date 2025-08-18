@@ -10,13 +10,22 @@ rm -rf "${BUILD_DIR}" "${ARTIFACTS_DIR}"
 mkdir -p "${BUILD_DIR}" "${INSTALL_DIR}" "${ARTIFACTS_DIR}"
 
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release
-cmake --build "${BUILD_DIR}" --target xclipse_wrapper --config Release -j
+cmake --build "${BUILD_DIR}" --target xeno_wrapper --config Release -j
 cmake --install "${BUILD_DIR}" --prefix "${INSTALL_DIR}"
 
 # Package to tar.zst with usr/lib layout for Winlator Bionic
 pushd "${INSTALL_DIR}" >/dev/null
-tar --zstd -cvf "${ARTIFACTS_DIR}/xclipse_tools_stable_v1.2.0.tar.zst" usr
+mkdir -p pkg
+cp -r "${INSTALL_DIR}/usr" pkg/
+cp -r "${ROOT_DIR}/usr/share" pkg/usr/
+mkdir -p pkg/etc/exynostools pkg/profiles/winlator pkg/assets/shaders/decode
+cp -v "${ROOT_DIR}/etc/exynostools/performance_mode.conf" pkg/etc/exynostools/
+cp -v ${ROOT_DIR}/profiles/winlator/*.env pkg/profiles/winlator/
+cp -v ${ROOT_DIR}/assets/shaders/decode/*.spv pkg/assets/shaders/decode/
+pushd pkg >/dev/null
+tar --zstd -cvf "${ARTIFACTS_DIR}/exynostools-android-arm64.tar.zst" .
+popd >/dev/null
 popd >/dev/null
 
-echo "Created artifact at: ${ARTIFACTS_DIR}/xclipse_tools_stable_v1.2.0.tar.zst"
+echo "Created artifact at: ${ARTIFACTS_DIR}/exynostools-android-arm64.tar.zst"
 
