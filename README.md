@@ -1,28 +1,33 @@
-ExynosTools v1.2.0 – Vulkan Driver para Xclipse 940 (Exynos 2400)
-ExynosTools es un paquete de drivers Vulkan de alto rendimiento especialmente diseñado para GPUs Xclipse 940 de Samsung, presentes en dispositivos con SoC Exynos 2400 como el Galaxy S24 FE.
+ExynosTools v1.2.0 – Wrapper Vulkan para Xclipse 940 (Exynos 2400)
+ExynosTools incluye un wrapper Vulkan mínimo y abierto para dispositivos con GPU Xclipse 940 (Samsung Exynos 2400). Esta versión corrige empaquetado, rutas y formato de distribución para Winlator Bionic.
 
-💡 Compatible con Winlator, DXVK, VKD3D-Proton, Zink y otras soluciones gráficas modernas en Android.
-✅ Características
-Compatibilidad total con Vulkan 1.3
+💡 Compatible con Winlator Bionic, DXVK 1.10.x/2.x (según compatibilidad), VKD3D-Proton y Zink.
 
-Soporte para DXVK y VKD3D-Proton
+✅ Cambios clave respecto a versiones anteriores
+- Distribución en `tar.zst` con layout `usr/lib/libxclipse_wrapper.so` (ya no ZIP ni rutas de APK `libs/arm64-v8a`).
+- Se elimina `icd.json`: no es usado por el cargador de Vulkan en Android/Winlator.
+- Wrapper no vacío con `vkGetInstanceProcAddr` que reenvía al cargador real (`libvulkan.so.1`/`libvulkan.so`).
+- Script de build y empaquetado reproducible.
 
-Alta compatibilidad con juegos DirectX 9, 10, 11 y 12
+🔧 Requisitos
+- Compilador C, CMake >= 3.15, `tar` con soporte zstd.
 
-Integración directa con Winlator
+🚀 Build y empaquetado
+1) Linux (host x86_64 con toolchain cross o nativo en dispositivo):
+```
+bash scripts/build_and_package.sh
+```
+El artefacto quedará en `artifacts/xclipse_tools_stable_v1.2.0.tar.zst` con la estructura `usr/lib/libxclipse_wrapper.so`.
 
-No requiere root
+📦 Instalación en Winlator Bionic 10.1+
+- Copia el archivo `xclipse_tools_stable_v1.2.0.tar.zst` a:
+  `/storage/emulated/0/Android/data/com.winlator/files/drivers/`
+- En Winlator, abre tu contenedor y selecciona el driver si aplica. Winlator recoge librerías en `usr/lib` automáticamente.
 
-Bajo consumo de recursos y excelente rendimiento
+ℹ️ Notas técnicas
+- Este wrapper hoy solo reenvía funciones al cargador real (hook mínimo). Puntos de extensión: emulación BC4+ y dynamic rendering.
+- Para reemplazar el wrapper por defecto de Winlator (Vortek), puede requerirse parchear el flujo de control (ver `vortek-patcher`).
 
-Basado en especificaciones RDNA3 y controladores AMD
-
-🔧 Instalación
-Copia la carpeta del driver en:
-/storage/emulated/0/Android/data/com.winlator/files/drivers/
-
-Abre Winlator, crea o edita tu contenedor.
-
-En la opción “graphics driver”, selecciona XclipseTools.
-
-Guarda y ejecuta tu contenedor. ¡Listo!
+🧩 Estado de Xclipse
+- Falta soporte nativo BC4+ en muchos dispositivos Xclipse; DXVK 1.10.3 funciona ampliamente con wrappers de emulación BC4.
+- `supportsDynamicRendering` puede requerir emulación para DXVK 2+. Referencias públicas sobre issues conocidos enlazadas por la comunidad.
