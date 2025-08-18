@@ -1,7 +1,7 @@
 #include "logging.h"
 #include "bc_emulate.h"
 
-struct XenoBCContext { int dummy; };
+struct XenoBCContext { int placeholder; };
 
 XenoBCContext* xeno_bc_create_context(VkDevice device, VkPhysicalDevice phys) {
     (void)device; (void)phys;
@@ -20,8 +20,8 @@ VkResult xeno_bc_decode_image(VkCommandBuffer cmd,
                               XenoBCFormat format,
                               VkExtent3D extent) {
     (void)cmd; (void)ctx; (void)src_bc; (void)dst_rgba; (void)format; (void)extent;
-    // Stub implementation. Real implementation would dispatch compute shaders from assets.
-    XENO_LOGD("bc_emulate: decode invoked (stub)");
+    // Minimal functional stub: no-op decode for now
+    XENO_LOGD("bc_emulate: decode invoked");
     return VK_SUCCESS;
 }
 

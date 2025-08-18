@@ -1,0 +1,42 @@
+#version 450
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 1) in;
+
+// Input: BC5 blocks: R and G channels
+layout(binding = 0) readonly buffer SrcBC { uint data[]; } srcBC;
+layout(binding = 1, rgba8) uniform writeonly image2D dstImage;
+
+layout(push_constant) uniform Push { uvec2 extent; uint blocksPerRow; uint pad; } pc;
+
+#include "bc_common.glsl"
+
+void main() {
+    uvec2 gid = gl_GlobalInvocationID.xy;
+    if (gid.x >= pc.extent.x || gid.y >= pc.extent.y) return;
+
+    uvec2 block = gid / uvec2(4,4);
+    uvec2 local = gid % uvec2(4,4);
+    uint blockIndex = block.y * pc.blocksPerRow + block.x;
+
+    // BC5: two BC4 blocks back-to-back (R then G)
+    uint base = blockIndex * 8u; // 32 bytes per BC5 block
+
+    uint r0 = srcBC.data[base + 0] & 0xFFu;
+    uint r1 = (srcBC.data[base + 0] >> 8) & 0xFFu;
+    uvec2 rbits = uvec2(srcBC.data[base + 2], srcBC.data[base + 1]);
+
+    uint g0 = srcBC.data[base + 4] & 0xFFu;
+    uint g1 = (srcBC.data[base + 4] >> 8) & 0xFFu;
+    uvec2 gbits = uvec2(srcBC.data[base + 6], srcBC.data[base + 5]);
+
+    uint rpal[8]; bc4_palette(r0, r1, rpal);
+    uint gpal[8]; bc4_palette(g0, g1, gpal);
+
+    uint linear = local.y * 4u + local.x;
+    uint ridx = bc3bit_index(rbits, int(linear));
+    uint gidx = bc3bit_index(gbits, int(linear));
+    uint r = rpal[ridx];
+    uint g = gpal[gidx];
+    vec4 outc = vec4(r / 255.0, g / 255.0, 0.0, 1.0);
+    imageStore(dstImage, ivec2(gid), outc);
+}
+
