@@ -34,6 +34,7 @@ static int g_log_fps = 0;
 static double g_last_fps_time = 0.0;
 static int g_frames = 0;
 static XenoPerfConf g_perf_conf;
+static int g_show_hud = 0;
 
 static double now_sec(void) {
     struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -79,6 +80,12 @@ static void resolve_loader_once(void) {
 }
 
 static void ensure_loader(void) { pthread_once(&g_loader_once, resolve_loader_once); }
+static void xeno_hud_draw(VkQueue queue) {
+    (void)queue;
+    // Minimal HUD: logging-based placeholder; a real HUD would draw to the swapchain
+    XENO_LOGD("HUD: FPS ~ %d", g_frames);
+}
+
 
 // Helper to fetch device-level functions after device creation
 static void resolve_device_entrypoints(VkDevice device) {
@@ -121,10 +128,12 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo* pCre
     if (!real_vkCreateInstance) real_vkCreateInstance = (PFN_vkCreateInstance)real_vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkCreateInstance");
     if (!real_vkCreateInstance) return VK_ERROR_INITIALIZATION_FAILED;
     g_log_fps = getenv("EXYNOSTOOLS_LOG_FPS") && *getenv("EXYNOSTOOLS_LOG_FPS") == '1';
+    g_show_hud = getenv("EXYNOSTOOLS_HUD") && *getenv("EXYNOSTOOLS_HUD") == '1';
     g_last_fps_time = now_sec();
     g_frames = 0;
+    xeno_logging_init();
     xeno_perf_conf_load("/etc/exynostools/performance_mode.conf", &g_perf_conf);
-    XENO_LOGI("ExynosTools wrapper initialized. sync_mode=%d validation=%d", g_perf_conf.sync_mode, g_perf_conf.validation);
+    XENO_LOGI("ExynosTools v1.2.1 initialized. HUD=%d sync_mode=%d validation=%d", g_show_hud, g_perf_conf.sync_mode, g_perf_conf.validation);
     xeno_app_profile_apply();
     return real_vkCreateInstance(pCreateInfo, pAllocator, pInstance);
 }
@@ -175,6 +184,9 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateSwapchainKHR(VkDevice device, const VkSwa
 
 VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
     if (!real_vkQueuePresentKHR) real_vkQueuePresentKHR = (PFN_vkQueuePresentKHR)real_vkGetDeviceProcAddr(queue ? *(VkDevice*)(&queue) : VK_NULL_HANDLE, "vkQueuePresentKHR");
+    if (g_show_hud) {
+        xeno_hud_draw(queue);
+    }
     VkResult r = real_vkQueuePresentKHR(queue, pPresentInfo);
     if (g_log_fps) {
         ++g_frames;

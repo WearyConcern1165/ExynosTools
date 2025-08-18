@@ -13,6 +13,7 @@ add_library(xeno_wrapper SHARED
     src/features_patch.c
     src/detect.c
     src/perf_conf.c
+    src/logging.c
     src/app_profile.c
 )
 
@@ -34,3 +35,4 @@ install(TARGETS xeno_wrapper
 
 install(FILES usr/share/meta.json DESTINATION usr/share)
 install(FILES etc/exynostools/performance_mode.conf DESTINATION etc/exynostools)
+install(DIRECTORY etc/exynostools/profiles DESTINATION etc/exynostools)

@@ -31,6 +31,9 @@ void xeno_patch_extensions(VkPhysicalDevice phys,
         VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME,
         // Consider advertising dynamic rendering if DXVK needs it and it is safe to emulate
         VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+        // Additional compatibility extensions
+        VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME,
+        VK_EXT_PRIMITIVE_TOPOLOGY_LIST_RESTART_EXTENSION_NAME,
     };
     VkExtensionProperties added[8];
     uint32_t add_count = 0;
@@ -79,6 +82,17 @@ void xeno_patch_features2(VkPhysicalDevice phys,
             VkPhysicalDeviceFloat16Int8FeaturesKHR* f = (VkPhysicalDeviceFloat16Int8FeaturesKHR*)p;
             f->shaderFloat16 = VK_TRUE;
             f->shaderInt8 = VK_TRUE;
+        } else if (p->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES) {
+            VkPhysicalDeviceDynamicRenderingFeatures* f = (VkPhysicalDeviceDynamicRenderingFeatures*)p;
+            f->dynamicRendering = VK_TRUE;
+        } else if (p->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_FEATURES_EXT) {
+            VkPhysicalDeviceCustomBorderColorFeaturesEXT* f = (VkPhysicalDeviceCustomBorderColorFeaturesEXT*)p;
+            f->customBorderColors = VK_TRUE;
+            f->customBorderColorWithoutFormat = VK_TRUE;
+        } else if (p->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIMITIVE_TOPOLOGY_LIST_RESTART_FEATURES_EXT) {
+            VkPhysicalDevicePrimitiveTopologyListRestartFeaturesEXT* f = (VkPhysicalDevicePrimitiveTopologyListRestartFeaturesEXT*)p;
+            f->primitiveTopologyListRestart = VK_TRUE;
+            f->primitiveTopologyPatchListRestart = VK_TRUE;
         }
         p = p->pNext;
     }

@@ -12,6 +12,7 @@ srcs = [
   'src/features_patch.c',
   'src/detect.c',
   'src/perf_conf.c',
+  'src/logging.c',
   'src/app_profile.c',
 ]
 

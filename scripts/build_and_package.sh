@@ -20,6 +20,9 @@ cp -r "${INSTALL_DIR}/usr" pkg/
 cp -r "${ROOT_DIR}/usr/share" pkg/usr/
 mkdir -p pkg/etc/exynostools pkg/profiles/winlator pkg/assets/shaders/decode
 cp -v "${ROOT_DIR}/etc/exynostools/performance_mode.conf" pkg/etc/exynostools/
+if [ -d "${ROOT_DIR}/etc/exynostools/profiles" ]; then
+  cp -rv "${ROOT_DIR}/etc/exynostools/profiles" pkg/etc/exynostools/
+fi
 cp -v ${ROOT_DIR}/profiles/winlator/*.env pkg/profiles/winlator/
 cp -v ${ROOT_DIR}/assets/shaders/decode/*.spv pkg/assets/shaders/decode/
 pushd pkg >/dev/null
