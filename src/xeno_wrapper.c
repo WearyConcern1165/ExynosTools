@@ -11,6 +11,7 @@
 #include "features_patch.h"
 #include "bc_emulate.h"
 #include "perf_conf.h"
+#include "app_profile.h"
 
 // Lazy loader state
 static pthread_once_t g_loader_once = PTHREAD_ONCE_INIT;
@@ -124,6 +125,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo* pCre
     g_frames = 0;
     xeno_perf_conf_load("/etc/exynostools/performance_mode.conf", &g_perf_conf);
     XENO_LOGI("ExynosTools wrapper initialized. sync_mode=%d validation=%d", g_perf_conf.sync_mode, g_perf_conf.validation);
+    xeno_app_profile_apply();
     return real_vkCreateInstance(pCreateInfo, pAllocator, pInstance);
 }
 

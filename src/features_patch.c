@@ -29,8 +29,10 @@ void xeno_patch_extensions(VkPhysicalDevice phys,
         VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
         VK_EXT_ROBUSTNESS_2_EXTENSION_NAME,
         VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME,
+        // Consider advertising dynamic rendering if DXVK needs it and it is safe to emulate
+        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
     };
-    VkExtensionProperties added[3];
+    VkExtensionProperties added[8];
     uint32_t add_count = 0;
     for (size_t i = 0; i < sizeof(virt_exts)/sizeof(virt_exts[0]); ++i) {
         if (!ext_present(virt_exts[i], props, count)) {

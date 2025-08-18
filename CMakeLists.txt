@@ -13,6 +13,7 @@ add_library(xeno_wrapper SHARED
     src/features_patch.c
     src/detect.c
     src/perf_conf.c
+    src/app_profile.c
 )
 
 target_compile_definitions(xeno_wrapper PRIVATE $<$<BOOL:${XCLIPSE_ENABLE_ANDROID_LOG}>:XCLIPSE_ANDROID_LOG>)

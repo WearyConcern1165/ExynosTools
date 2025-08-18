@@ -4,6 +4,9 @@
 
 // Known Samsung vendor ID and Xclipse device IDs
 #define VENDOR_ID_SAMSUNG 0x144D
+static const unsigned xclipse_device_ids[] = {
+    0x0000, // placeholder; populate known Xclipse IDs here as available
+};
 
 static int is_whitelisted_by_env(void) {
     const char* wl = getenv("EXYNOSTOOLS_WHITELIST");
@@ -39,6 +42,10 @@ int xeno_is_xclipse_gpu(VkPhysicalDevice phys, const XenoDetectConfig* cfg) {
         // Heuristic: treat Samsung with deviceName containing Xclipse as Xclipse GPU
         if (strstr(props.deviceName, "Xclipse") != NULL) {
             return 1;
+        }
+        // Device ID list
+        for (size_t i = 0; i < sizeof(xclipse_device_ids)/sizeof(xclipse_device_ids[0]); ++i) {
+            if (props.deviceID == xclipse_device_ids[i]) return 1;
         }
         // Allow whitelist override
         if (is_whitelisted_by_env()) {
