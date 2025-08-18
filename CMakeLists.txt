@@ -63,6 +63,7 @@ add_library(xeno_wrapper SHARED
     src/perf_conf.c
     src/logging.c
     src/app_profile.c
+    src/hud.c
 )
 
 add_dependencies(xeno_wrapper embedded_shaders)

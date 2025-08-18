@@ -12,6 +12,7 @@
 #include "bc_emulate.h"
 #include "perf_conf.h"
 #include "app_profile.h"
+#include "hud.h"
 
 // Lazy loader state
 static pthread_once_t g_loader_once = PTHREAD_ONCE_INIT;
@@ -35,6 +36,7 @@ static double g_last_fps_time = 0.0;
 static int g_frames = 0;
 static XenoPerfConf g_perf_conf;
 static int g_show_hud = 0;
+static XenoHudContext* g_hud = NULL;
 
 static double now_sec(void) {
     struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -80,11 +82,7 @@ static void resolve_loader_once(void) {
 }
 
 static void ensure_loader(void) { pthread_once(&g_loader_once, resolve_loader_once); }
-static void xeno_hud_draw(VkQueue queue) {
-    (void)queue;
-    // Minimal HUD: logging-based placeholder; a real HUD would draw to the swapchain
-    XENO_LOGD("HUD: FPS ~ %d", g_frames);
-}
+// HUD draw moved to hud.c via xeno_hud_draw
 
 
 // Helper to fetch device-level functions after device creation
@@ -184,8 +182,8 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateSwapchainKHR(VkDevice device, const VkSwa
 
 VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
     if (!real_vkQueuePresentKHR) real_vkQueuePresentKHR = (PFN_vkQueuePresentKHR)real_vkGetDeviceProcAddr(queue ? *(VkDevice*)(&queue) : VK_NULL_HANDLE, "vkQueuePresentKHR");
-    if (g_show_hud) {
-        xeno_hud_draw(queue);
+    if (g_show_hud && g_hud) {
+        xeno_hud_draw(g_hud, queue, pPresentInfo, g_frames);
     }
     VkResult r = real_vkQueuePresentKHR(queue, pPresentInfo);
     if (g_log_fps) {
