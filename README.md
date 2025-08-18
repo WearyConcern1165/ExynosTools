@@ -1,14 +1,15 @@
-ExynosTools v1.2.1 – Wrapper Vulkan avanzado para Xclipse (Exynos 2400+)
-ExynosTools proporciona un wrapper Vulkan para investigación que intercepta funciones clave, anuncia extensiones seguras, incluye emulación inicial BC4/BC5 por compute (BC6H/BC7 planificados), autodetección Xclipse y perfiles Winlator.
+ExynosTools v1.3.0 – Wrapper Vulkan de producción para Xclipse (Exynos 2400+)
+ExynosTools proporciona un wrapper Vulkan de alto rendimiento con emulación BCn funcional (BC4–BC7), emulación de dynamicRendering y HUD opcional, orientado a producción.
 
-💡 Compatible con Winlator Bionic, DXVK 1.10.x/2.x (según compatibilidad), VKD3D-Proton y Zink.
+💡 Compatible con Winlator Bionic, DXVK 2.x, VKD3D-Proton y Zink.
 
-✅ Cambios clave respecto a versiones anteriores
-- Distribución en `tar.zst` con layout `usr/lib/libxeno_wrapper.so` (ya no ZIP ni rutas de APK `libs/arm64-v8a`).
-- Se elimina `icd.json`: no es usado por el cargador de Vulkan en Android/Winlator.
-- Wrapper con `vkGetInstanceProcAddr`/`vkGetDeviceProcAddr` que reenvía al cargador real y aplica parches de features/extensiones cuando procede.
-- Emulación BCn: BC4/BC5 con shaders de cómputo iniciales (assets en `assets/shaders/src/`), BC6H/BC7 en preparación.
-- Perfiles por aplicación y configuración de rendimiento cargados en `vkCreateInstance`.
+✅ Novedades 1.3.0 (Estable)
+- Emulación BCn funcional: BC4, BC5, BC6h y BC7 (compute SPIR-V embebidos en el binario).
+- DynamicRendering: emulación de `VK_KHR_dynamic_rendering` para DXVK 2.x.
+- HUD opcional: `EXYNOSTOOLS_HUD=1` para mostrar FPS en pantalla.
+- Perfiles por app unificados: `.conf` en `/etc/exynostools/profiles/`, parseados como K/V.
+- Detección Xclipse mejorada: lista interna de `deviceID` + `vendorID` Samsung.
+- Distribución `.tar.zst` lista para Winlator.
 
 🔧 Requisitos
 - Compilador C, CMake >= 3.15, `tar` con soporte zstd.
@@ -29,17 +30,11 @@ ninja -C build-android
 📦 Instalación en Winlator Bionic 10.1+
 - Copia el archivo `exynostools-android-arm64.tar.zst` a:
   `/storage/emulated/0/Android/data/com.winlator/files/drivers/`
-- En Winlator, abre tu contenedor y selecciona el driver si aplica. Winlator recoge librerías en `usr/lib` automáticamente.
+- Winlator recoge librerías en `usr/lib` automáticamente.
 
 ℹ️ Notas técnicas
 - Intercepción: `vkGetInstanceProcAddr`, `vkGetDeviceProcAddr`, `vkCreateInstance`, `vkEnumeratePhysicalDevices`, `vkGetPhysicalDeviceProperties`, `vkGetPhysicalDeviceFeatures2`, `vkEnumerateDeviceExtensionProperties`, `vkCreateDevice`, `vkCreateSwapchainKHR`, `vkQueuePresentKHR`.
-- Anuncio/patch: añade virtualmente `VK_EXT_descriptor_indexing`, `VK_EXT_robustness2`, `VK_KHR_shader_float16_int8`, `VK_KHR_dynamic_rendering` cuando es seguro; parcha `vkGetPhysicalDeviceFeatures2`.
-- BCn: BC4/BC5 iniciales (compute GLSL→SPIR-V); BC6H/BC7 en progreso.
-- Detección: heurística Xclipse (vendorID Samsung + nombre/deviceID), con `EXYNOSTOOLS_FORCE` y `EXYNOSTOOLS_WHITELIST`.
-- Modo rendimiento: lee `etc/exynostools/performance_mode.conf`.
-- Perfiles por app: auto-aplica `.env` por proceso o `EXYNOSTOOLS_APP_PROFILE`.
-- FPS: activar con `EXYNOSTOOLS_LOG_FPS=1`.
-
-🧩 Estado de Xclipse
-- Falta soporte nativo BC4+ en muchos dispositivos Xclipse; la emulación por compute mejora compatibilidad (BC4/BC5 ya presentes, BC6H/BC7 a seguir).
-- `supportsDynamicRendering` puede requerir emulación para DXVK 2+. Referencias públicas sobre issues conocidos enlazadas por la comunidad.
+- Parcheo/emulación: `descriptor_indexing`, `robustness2`, `shader_float16_int8`, `dynamic_rendering`, `custom_border_color`, `primitive_topology_list_restart`.
+- BCn: shaders SPIR-V embebidos; despacho compute automático cuando el formato no es nativo.
+- Perfiles: `.conf` en `/etc/exynostools/profiles/` o forzar con `EXYNOSTOOLS_APP_PROFILE=/ruta/perfil.conf`.
+- HUD: `EXYNOSTOOLS_HUD=1`; FPS por log: `EXYNOSTOOLS_LOG_FPS=1`.
