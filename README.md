@@ -1,5 +1,5 @@
-ExynosTools v1.2.0 – Wrapper Vulkan para Xclipse 940 (Exynos 2400)
-ExynosTools incluye un wrapper Vulkan mínimo y abierto para dispositivos con GPU Xclipse 940 (Samsung Exynos 2400). Esta versión corrige empaquetado, rutas y formato de distribución para Winlator Bionic.
+ExynosTools v1.2.1 – Wrapper Vulkan avanzado para Xclipse (Exynos 2400+)
+ExynosTools proporciona un wrapper Vulkan para investigación que intercepta funciones clave, anuncia extensiones seguras, incluye stubs de emulación BC4–BC7 por compute, autodetección Xclipse y perfiles Winlator.
 
 💡 Compatible con Winlator Bionic, DXVK 1.10.x/2.x (según compatibilidad), VKD3D-Proton y Zink.
 
@@ -12,20 +12,31 @@ ExynosTools incluye un wrapper Vulkan mínimo y abierto para dispositivos con GP
 🔧 Requisitos
 - Compilador C, CMake >= 3.15, `tar` con soporte zstd.
 
-🚀 Build y empaquetado
-1) Linux (host x86_64 con toolchain cross o nativo en dispositivo):
+🚀 Build y empaquetado (CMake)
+1) Linux (host x86_64 con NDK r25b para Android arm64):
 ```
 bash scripts/build_and_package.sh
 ```
-El artefacto quedará en `artifacts/xclipse_tools_stable_v1.2.0.tar.zst` con la estructura `usr/lib/libxclipse_wrapper.so`.
+El artefacto quedará en `artifacts/exynostools-android-arm64.tar.zst` con la estructura requerida por Winlator.
+
+Alternativa Meson + Ninja (Android cross):
+```
+meson setup build-android --cross-file=android/arm64.txt -Dbuildtype=release
+ninja -C build-android
+```
 
 📦 Instalación en Winlator Bionic 10.1+
-- Copia el archivo `xclipse_tools_stable_v1.2.0.tar.zst` a:
+- Copia el archivo `exynostools-android-arm64.tar.zst` a:
   `/storage/emulated/0/Android/data/com.winlator/files/drivers/`
 - En Winlator, abre tu contenedor y selecciona el driver si aplica. Winlator recoge librerías en `usr/lib` automáticamente.
 
 ℹ️ Notas técnicas
-- Este wrapper hoy solo reenvía funciones al cargador real (hook mínimo). Puntos de extensión: emulación BC4+ y dynamic rendering.
+- Intercepción: `vkGetInstanceProcAddr`, `vkGetDeviceProcAddr`, `vkCreateInstance`, `vkEnumeratePhysicalDevices`, `vkGetPhysicalDeviceProperties`, `vkGetPhysicalDeviceFeatures2`, `vkEnumerateDeviceExtensionProperties`, `vkCreateDevice`, `vkCreateSwapchainKHR`, `vkQueuePresentKHR`.
+- Anuncio/patch: añade virtualmente `VK_EXT_descriptor_indexing`, `VK_EXT_robustness2`, `VK_KHR_shader_float16_int8` cuando es seguro; parcha `vkGetPhysicalDeviceFeatures2`.
+- BCn: stubs listos para integrar decoders reales; assets SPIR-V placeholder en `assets/shaders/decode/`.
+- Detección: heurística Xclipse (vendorID Samsung + nombre), con `EXYNOSTOOLS_FORCE` para forzar on/off.
+- Modo rendimiento: lee `etc/exynostools/performance_mode.conf`.
+- FPS: activar con `EXYNOSTOOLS_LOG_FPS=1`.
 - Para reemplazar el wrapper por defecto de Winlator (Vortek), puede requerirse parchear el flujo de control (ver `vortek-patcher`).
 
 🧩 Estado de Xclipse
