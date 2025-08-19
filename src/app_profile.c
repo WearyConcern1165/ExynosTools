@@ -6,13 +6,20 @@
 #include <string.h>
 #include <unistd.h>
 
-static void load_env_file(const char* path) {
+static void trim(char* s) {
+	// simple trim of newline and spaces at ends
+	size_t len = strlen(s);
+	while (len && (s[len-1] == '\n' || s[len-1] == '\r' || s[len-1] == ' ' || s[len-1] == '\t')) s[--len] = 0;
+}
+
+static void load_conf_file(const char* path) {
 	FILE* f = fopen(path, "r");
 	if (!f) return;
 	char line[1024];
 	XENO_LOGI("app_profile: applying %s", path);
 	while (fgets(line, sizeof(line), f)) {
-		if (line[0] == '#' || line[0] == '\n') continue;
+		trim(line);
+		if (line[0] == '#' || line[0] == '\0') continue;
 		char key[512], val[512];
 		if (sscanf(line, "%511[^=]=%511[^\n]", key, val) == 2) {
 			setenv(key, val, 1);
@@ -33,16 +40,16 @@ static void basename_noext(const char* in, char* out, size_t outsz) {
 void xeno_app_profile_apply(void) {
 	const char* forced = getenv("EXYNOSTOOLS_APP_PROFILE");
 	if (forced && *forced) {
-		load_env_file(forced);
+		load_conf_file(forced);
 		return;
 	}
 	char exe[512]={0};
 	if (readlink("/proc/self/exe", exe, sizeof(exe)-1) > 0) {
 		char base[256]; basename_noext(exe, base, sizeof(base));
-		char try1[512]; snprintf(try1, sizeof(try1), "profiles/winlator/%s.env", base);
-		load_env_file(try1);
+		char try1[512]; snprintf(try1, sizeof(try1), "etc/exynostools/profiles/%s.conf", base);
+		load_conf_file(try1);
 	}
 	// fallback to generic profiles
-	load_env_file("profiles/winlator/dxvk.env");
-	load_env_file("profiles/winlator/vkd3d.env");
+	load_conf_file("etc/exynostools/profiles/dxvk.conf");
+	load_conf_file("etc/exynostools/profiles/vkd3d.conf");
 }

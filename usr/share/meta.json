@@ -1,2 +1,2 @@
-{ "name": "ExynosTools", "version": "v1.2.1", "description": "Advanced Vulkan wrapper for Xclipse (stable)" }
+{ "name": "ExynosTools", "version": "v1.3.0", "description": "Production-grade Vulkan wrapper for Xclipse with complete BCn emulation and HUD" }
 

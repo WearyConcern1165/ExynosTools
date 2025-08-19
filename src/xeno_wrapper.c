@@ -12,6 +12,7 @@
 #include "bc_emulate.h"
 #include "perf_conf.h"
 #include "app_profile.h"
+#include "hud.h"
 
 // Lazy loader state
 static pthread_once_t g_loader_once = PTHREAD_ONCE_INIT;
@@ -29,12 +30,14 @@ static PFN_vkCreateDevice real_vkCreateDevice = NULL;
 static PFN_vkCreateSwapchainKHR real_vkCreateSwapchainKHR = NULL;
 static PFN_vkQueuePresentKHR real_vkQueuePresentKHR = NULL;
 
-// Simple FPS counter
+// Simple FPS counter and HUD context
 static int g_log_fps = 0;
 static double g_last_fps_time = 0.0;
 static int g_frames = 0;
 static XenoPerfConf g_perf_conf;
 static int g_show_hud = 0;
+static XenoHUDContext* g_hud_context = NULL;
+static XenoBCContext* g_bc_context = NULL;
 
 static double now_sec(void) {
     struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -80,10 +83,14 @@ static void resolve_loader_once(void) {
 }
 
 static void ensure_loader(void) { pthread_once(&g_loader_once, resolve_loader_once); }
-static void xeno_hud_draw(VkQueue queue) {
-    (void)queue;
-    // Minimal HUD: logging-based placeholder; a real HUD would draw to the swapchain
-    XENO_LOGD("HUD: FPS ~ %d", g_frames);
+static void xeno_hud_update_and_draw(VkQueue queue) {
+    if (!g_hud_context) return;
+    
+    double currentTime = now_sec();
+    xeno_hud_update_fps(g_hud_context, currentTime);
+    
+    // For now, just log HUD info - full rendering would require command buffer access
+    XENO_LOGD("HUD: FPS ~ %.1f", 1.0f / g_hud_context->frameTime);
 }
 
 
@@ -133,7 +140,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo* pCre
     g_frames = 0;
     xeno_logging_init();
     xeno_perf_conf_load("/etc/exynostools/performance_mode.conf", &g_perf_conf);
-    XENO_LOGI("ExynosTools v1.2.1 initialized. HUD=%d sync_mode=%d validation=%d", g_show_hud, g_perf_conf.sync_mode, g_perf_conf.validation);
+    XENO_LOGI("ExynosTools v1.3.0 (Stable) initialized. HUD=%d sync_mode=%d validation=%d", g_show_hud, g_perf_conf.sync_mode, g_perf_conf.validation);
     xeno_app_profile_apply();
     return real_vkCreateInstance(pCreateInfo, pAllocator, pInstance);
 }
@@ -173,6 +180,18 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice physicalDevice, c
     VkResult r = real_vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
     if (r == VK_SUCCESS) {
         resolve_device_entrypoints(*pDevice);
+        
+        // Initialize BCn context for Xclipse GPUs
+        XenoDetectConfig dcfg; 
+        xeno_detect_parse_env(&dcfg);
+        if (xeno_is_xclipse_gpu(physicalDevice, &dcfg)) {
+            g_bc_context = xeno_bc_create_context(*pDevice, physicalDevice);
+            if (!g_bc_context) {
+                XENO_LOGW("Failed to initialize BCn emulation context");
+            } else {
+                XENO_LOGI("BCn emulation context initialized successfully");
+            }
+        }
     }
     return r;
 }
@@ -185,7 +204,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateSwapchainKHR(VkDevice device, const VkSwa
 VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
     if (!real_vkQueuePresentKHR) real_vkQueuePresentKHR = (PFN_vkQueuePresentKHR)real_vkGetDeviceProcAddr(queue ? *(VkDevice*)(&queue) : VK_NULL_HANDLE, "vkQueuePresentKHR");
     if (g_show_hud) {
-        xeno_hud_draw(queue);
+        xeno_hud_update_and_draw(queue);
     }
     VkResult r = real_vkQueuePresentKHR(queue, pPresentInfo);
     if (g_log_fps) {

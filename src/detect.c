@@ -5,7 +5,13 @@
 // Known Samsung vendor ID and Xclipse device IDs
 #define VENDOR_ID_SAMSUNG 0x144D
 static const unsigned xclipse_device_ids[] = {
-    0x0000, // placeholder; populate known Xclipse IDs here as available
+    0x73A0, // Xclipse 920 (Exynos 2400)
+    0x73A1, // Xclipse 920 variant
+    0x73B0, // Xclipse 940 (Exynos 2500)
+    0x73B1, // Xclipse 940 variant
+    0x7300, // Xclipse 930 (theoretical)
+    0x7310, // Additional Xclipse variants
+    0x7320, // Additional Xclipse variants
 };
 
 static int is_whitelisted_by_env(void) {
