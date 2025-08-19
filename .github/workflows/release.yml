@@ -1,0 +1,56 @@
+name: release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-attach:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y cmake ninja-build meson zstd python3-pip glslang-tools vim-common
+
+      - name: Setup Android NDK r25b
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25b
+
+      - name: Configure (CMake Android arm64)
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+        run: |
+          cmake -S . -B build-android \
+            -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=31 \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (CMake)
+        run: cmake --build build-android --config Release -j
+
+      - name: Install to staging
+        run: cmake --install build-android --prefix $(pwd)/staging
+
+      - name: Package tar.zst (Winlator layout)
+        run: |
+          mkdir -p pkg/usr/lib pkg/usr/share pkg/etc/exynostools pkg/profiles/winlator pkg/assets/shaders/decode
+          cp -v staging/usr/lib/libxeno_wrapper.so pkg/usr/lib/
+          cp -v usr/share/meta.json pkg/usr/share/
+          cp -v etc/exynostools/performance_mode.conf pkg/etc/exynostools/
+          if [ -d etc/exynostools/profiles ]; then cp -rv etc/exynostools/profiles pkg/etc/exynostools/; fi
+          cp -v profiles/winlator/*.env pkg/profiles/winlator/
+          cp -v assets/shaders/decode/*.spv pkg/assets/shaders/decode/ || true
+          tar --zstd -cvf exynostools-android-arm64.tar.zst -C pkg .
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: exynostools-android-arm64.tar.zst
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
