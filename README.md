@@ -1,9 +1,9 @@
-ExynosTools v1.3.0 – Wrapper Vulkan de producción para Xclipse (Exynos 2400+)
+ExynosTools v1.3.1 – Wrapper Vulkan de producción para Xclipse (Exynos 2400+)
 ExynosTools proporciona un wrapper Vulkan de alto rendimiento con emulación BCn funcional (BC4–BC7), emulación de dynamicRendering y HUD opcional, orientado a producción.
 
 💡 Compatible con Winlator Bionic, DXVK 2.x, VKD3D-Proton y Zink.
 
-✅ Novedades 1.3.0 (Estable)
+✅ Novedades 1.3.1 (Estable)
 - Emulación BCn funcional: BC4, BC5, BC6h y BC7 (compute SPIR-V embebidos en el binario).
 - DynamicRendering: emulación de `VK_KHR_dynamic_rendering` para DXVK 2.x.
 - HUD opcional: `EXYNOSTOOLS_HUD=1` para mostrar FPS en pantalla.

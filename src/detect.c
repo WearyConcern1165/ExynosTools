@@ -4,9 +4,21 @@
 
 // Known Samsung vendor ID and Xclipse device IDs
 #define VENDOR_ID_SAMSUNG 0x144D
-static const unsigned xclipse_device_ids[] = {
-    0x0000, // placeholder; populate known Xclipse IDs here as available
-};
+static unsigned xclipse_device_ids[32];
+static size_t xclipse_device_ids_count = 0;
+
+static void load_device_ids_from_env(void) {
+    if (xclipse_device_ids_count > 0) return;
+    const char* env = getenv("EXYNOSTOOLS_XCLIPSE_IDS"); // e.g., "0x3940,0x3941"
+    if (!env || !*env) return;
+    char buf[256]; strncpy(buf, env, sizeof(buf)-1); buf[sizeof(buf)-1]=0;
+    char* tok = strtok(buf, ",");
+    while (tok && xclipse_device_ids_count < 32) {
+        unsigned val = 0; sscanf(tok, "%x", &val);
+        xclipse_device_ids[xclipse_device_ids_count++] = val;
+        tok = strtok(NULL, ",");
+    }
+}
 
 static int is_whitelisted_by_env(void) {
     const char* wl = getenv("EXYNOSTOOLS_WHITELIST");
@@ -43,8 +55,8 @@ int xeno_is_xclipse_gpu(VkPhysicalDevice phys, const XenoDetectConfig* cfg) {
         if (strstr(props.deviceName, "Xclipse") != NULL) {
             return 1;
         }
-        // Device ID list
-        for (size_t i = 0; i < sizeof(xclipse_device_ids)/sizeof(xclipse_device_ids[0]); ++i) {
+        load_device_ids_from_env();
+        for (size_t i = 0; i < xclipse_device_ids_count; ++i) {
             if (props.deviceID == xclipse_device_ids[i]) return 1;
         }
         // Allow whitelist override

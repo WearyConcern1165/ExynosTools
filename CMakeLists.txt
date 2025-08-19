@@ -21,6 +21,7 @@ set(GLSL_SRC
   assets/shaders/src/bc4.comp
   assets/shaders/src/bc5.comp
 )
+set(GLSL_INC ${CMAKE_SOURCE_DIR}/assets/shaders/src)
 
 set(EMBED_HEADERS)
 foreach(src ${GLSL_SRC})
@@ -29,14 +30,14 @@ foreach(src ${GLSL_SRC})
   set(hdr ${GENERATED_DIR}/${name}_spv.h)
   if(GLSLC)
     add_custom_command(OUTPUT ${spv}
-      COMMAND ${GLSLC} -O -mfmt=num -fshader-stage=compute ${CMAKE_SOURCE_DIR}/${src} -o ${spv}
-      DEPENDS ${src}
+      COMMAND ${GLSLC} -I ${GLSL_INC} -O -mfmt=num -fshader-stage=compute ${CMAKE_SOURCE_DIR}/${src} -o ${spv}
+      DEPENDS ${src} ${GLSL_INC}/bc_common.glsl
       COMMENT "Compiling ${src} -> ${spv} (glslc)"
     )
   elseif(GLSLANGVALIDATOR)
     add_custom_command(OUTPUT ${spv}
-      COMMAND ${GLSLANGVALIDATOR} -V -o ${spv} ${CMAKE_SOURCE_DIR}/${src}
-      DEPENDS ${src}
+      COMMAND ${GLSLANGVALIDATOR} -I ${GLSL_INC} -V -o ${spv} ${CMAKE_SOURCE_DIR}/${src}
+      DEPENDS ${src} ${GLSL_INC}/bc_common.glsl
       COMMENT "Compiling ${src} -> ${spv} (glslangValidator)"
     )
   else()

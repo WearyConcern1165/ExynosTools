@@ -1,4 +1,4 @@
-project('ExynosTools', ['c'], version: '1.2.1-beta3', default_options: ['c_std=c11'])
+project('ExynosTools', ['c'], version: '1.3.1', default_options: ['c_std=c11'])
 
 cc = meson.get_compiler('c')
 
