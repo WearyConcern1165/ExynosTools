@@ -30,9 +30,8 @@ function(compile_shader_to_header SHADER_SOURCE HEADER_OUTPUT VARIABLE_NAME)
     # Convert SPIR-V to C header
     add_custom_command(
         OUTPUT ${HEADER_OUTPUT}
-        COMMAND ${XXD_EXECUTABLE} -i ${SPIRV_OUTPUT} > ${HEADER_OUTPUT}
+        COMMAND ${XXD_EXECUTABLE} -i -n ${VARIABLE_NAME} ${SPIRV_OUTPUT} > ${HEADER_OUTPUT}
         COMMAND sed -i "s/unsigned char/static const unsigned char/g" ${HEADER_OUTPUT}
-        COMMAND sed -i "s/${SHADER_NAME}_spv/${VARIABLE_NAME}/g" ${HEADER_OUTPUT}
         DEPENDS ${SPIRV_OUTPUT}
         COMMENT "Converting ${SPIRV_OUTPUT} to C header"
     )
