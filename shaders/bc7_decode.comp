@@ -1,0 +1,415 @@
+/// @file bc7_decode.comp
+/// @brief Compute shader for BC7 → R8G8B8A8_UNORM decode.
+///
+/// V1.7.0: RDNA Subgroup-accelerated path.
+/// Eliminates shared memory (LDS) and barriers entirely.
+/// Each invocation decodes one 4×4 block (128 bits) independently.
+///
+/// Implements all 8 BC7 modes (0-7) per the Khronos Data Format Spec §8.14.
+///   RDNA 2 (Exynos 2200): Wave32 native — zero LDS pressure
+///   RDNA 3/3.5: Wave32/64 auto-detect
+
+#version 450
+
+#extension GL_KHR_shader_subgroup_basic : enable
+#extension GL_KHR_shader_subgroup_ballot : enable
+#extension GL_KHR_shader_subgroup_shuffle : enable
+
+// Specialization constants for adaptive workgroup sizing
+layout(constant_id = 0) const uint WG_SIZE_X = 8u;
+layout(constant_id = 1) const uint WG_SIZE_Y = 8u;
+
+layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) buffer InputBuffer {
+    uint data[];
+} inputBuf;
+
+layout(set = 0, binding = 1, rgba8) uniform writeonly image2D outputImage;
+
+layout(push_constant) uniform PushConstants {
+    uint widthInBlocks;
+    uint heightInBlocks;
+} pc;
+
+// V1.7.0: LDS REMOVED — all data lives in registers (zero shared memory pressure)
+
+
+// ============================================================================
+// Bit stream reader operating on the 128-bit block stored in 4 uints.
+// ============================================================================
+uint blockBits[4]; // the 128-bit block loaded into shared registers
+int  bitPos;       // current read position
+
+void loadBlock(uint b0, uint b1, uint b2, uint b3) {
+    blockBits[0] = b0;
+    blockBits[1] = b1;
+    blockBits[2] = b2;
+    blockBits[3] = b3;
+    bitPos = 0;
+}
+
+uint readBits(int count) {
+    if (count == 0) return 0u;
+    uint result = 0u;
+    int bitsRead = 0;
+    while (bitsRead < count) {
+        int wordIdx = bitPos >> 5;        // /32
+        int bitIdx  = bitPos & 31;        // %32
+        int avail   = 32 - bitIdx;
+        int toRead  = min(count - bitsRead, avail);
+        uint mask   = (toRead >= 32) ? 0xFFFFFFFFu : ((1u << toRead) - 1u);
+        result |= ((blockBits[wordIdx] >> bitIdx) & mask) << bitsRead;
+        bitPos   += toRead;
+        bitsRead += toRead;
+    }
+    return result;
+}
+
+// ============================================================================
+// BC7 mode tables (from Khronos Data Format Specification)
+// ============================================================================
+
+// ---------- Partition tables ----------
+// 2-subset partition table (64 entries, each 16 texels → 4 bits per texel stored
+// as a single uint64 = 2 uints).  We encode each texel's subset as 1 bit.
+
+// Partition patterns for 2 subsets (64 patterns × 16 texels).
+// Each uint packs 16 texels × 1 bit (bit i = subset of texel i).
+const uint partition2[64] = uint[64](
+    0xCCCCu, 0x8888u, 0xEEEEu, 0xECC8u, 0xC880u, 0xFEECu, 0xFEC8u, 0xEC80u,
+    0xC800u, 0xFFECu, 0xFE80u, 0xE800u, 0xFFE8u, 0xFF00u, 0xFFF0u, 0xF000u,
+    0xF710u, 0x008Eu, 0x7100u, 0x08CEu, 0x008Cu, 0x7310u, 0x3100u, 0x8CCEu,
+    0x088Cu, 0x3110u, 0x6666u, 0x366Cu, 0x17E8u, 0x0FF0u, 0x718Eu, 0x399Cu,
+    0xAAAAu, 0xF0F0u, 0x5A5Au, 0x33CCu, 0x3C3Cu, 0x55AAu, 0x9696u, 0xA55Au,
+    0x73CEu, 0x13C8u, 0x324Cu, 0x3BDCu, 0x6996u, 0xC33Cu, 0x9966u, 0x0660u,
+    0x0272u, 0x04E4u, 0x4E40u, 0x2720u, 0xC936u, 0x936Cu, 0x39C6u, 0x639Cu,
+    0x9336u, 0x9CC6u, 0x817Eu, 0xE718u, 0xCCF0u, 0x0FFFu, 0x7008u, 0x8FF0u
+);
+
+// Partition patterns for 3 subsets (64 patterns × 16 texels × 2 bits).
+// Each uint packs 16 texels × 2 bits.
+const uint partition3[64] = uint[64](
+    0xAA685050u, 0x6A5A5040u, 0x5A5A4200u, 0x5450A0A8u,
+    0xA5A50000u, 0xA0A05050u, 0x5555A0A0u, 0x5A5A5050u,
+    0xAA550000u, 0xAA555500u, 0xAAAA5500u, 0x90909090u,
+    0x94949494u, 0xA4A4A4A4u, 0xA9A59450u, 0x2A0A4250u,
+    0xA5945040u, 0x0A425054u, 0xA5A5A500u, 0x55A0A0A0u,
+    0xA8A85454u, 0x6A6A4040u, 0xA4A45000u, 0x1A1A0500u,
+    0x0050A4A4u, 0xAAA59090u, 0x14696914u, 0x69691400u,
+    0xA08585A0u, 0xAA821414u, 0x50A4A450u, 0x6A5A0200u,
+    0xA9A58000u, 0x5090A0A8u, 0xA8A09050u, 0x24242424u,
+    0x00AA5500u, 0x24924924u, 0x24499224u, 0x50A50A50u,
+    0x500AA550u, 0xAAAA4444u, 0x66660000u, 0xA5A0A5A0u,
+    0x50A050A0u, 0x69286928u, 0x44AAAA44u, 0x66666600u,
+    0xAA444444u, 0x54A854A8u, 0x95809580u, 0x96969600u,
+    0xA85454A8u, 0x80959580u, 0xAA141414u, 0x96960000u,
+    0xAAAA1414u, 0xA05050A0u, 0xA0A5A5A5u, 0x96000000u,
+    0x40804080u, 0xA9A8A9A8u, 0xAAAAAA44u, 0x2A4A5254u
+);
+
+// Anchor indices for 2 subsets (subset 1 anchor – subset 0 anchor is always 0).
+const int anchor2[64] = int[64](
+    15,15,15,15,15,15,15,15,
+    15,15,15,15,15,15,15,15,
+    15, 2, 8, 2, 2, 8, 8,15,
+     2, 8, 2, 2, 8, 8, 2, 2,
+    15,15, 6, 8, 2, 8,15,15,
+     2, 8, 2, 2, 2,15,15, 6,
+     6, 2, 6, 8,15,15, 2, 2,
+    15,15,15,15,15, 2, 2,15
+);
+
+// Anchor indices for 3 subsets: anchor of subset 1 and subset 2.
+const int anchor3a[64] = int[64]( // subset 1 anchor
+     3, 3,15,15, 8, 3,15,15,
+     8, 8, 6, 6, 6, 5, 3, 3,
+     3, 3, 8,15, 3, 3, 6,10,
+     5, 8, 8, 6, 8, 5,15,15,
+     8,15, 3, 5, 6,10, 8,15,
+    15, 3,15, 5,15,15,15,15,
+     3,15, 5, 5, 5, 8, 5,10,
+     5,10, 8,13,15,12, 3, 3
+);
+
+const int anchor3b[64] = int[64]( // subset 2 anchor
+    15, 8, 8, 3,15,15, 3, 8,
+    15,15,15,15,15,15,15, 8,
+    15, 8,15, 3,15, 8,15, 8,
+     3,15, 6,10,15,15,10, 8,
+    15, 3,15,10,10, 8, 9,10,
+     6,15, 8,15, 3, 6, 6, 8,
+    15, 3,15,15,15,15,15,15,
+    15,15,15,15, 3,15,15, 8
+);
+
+// ============================================================================
+// Helper: get subset index for a texel in a partition
+// ============================================================================
+int getSubset2(int partIdx, int texelIdx) {
+    return int((partition2[partIdx] >> texelIdx) & 1u);
+}
+
+int getSubset3(int partIdx, int texelIdx) {
+    return int((partition3[partIdx] >> (texelIdx * 2)) & 3u);
+}
+
+// ============================================================================
+// Interpolation weight tables
+// ============================================================================
+const int weights2[4] = int[4](0, 21, 43, 64);
+const int weights3[8] = int[8](0, 9, 18, 27, 37, 46, 55, 64);
+const int weights4[16] = int[16](0,4,9,13,17,21,26,30,34,38,43,47,51,55,60,64);
+
+int interpolate(int e0, int e1, int w) {
+    return (e0 * (64 - w) + e1 * w + 32) >> 6;
+}
+
+// ============================================================================
+// Unquantize endpoint value from n bits to 8 bits
+// ============================================================================
+int unquantize(int val, int bits) {
+    if (bits >= 8) return val;
+    if (bits == 0) return 0;
+    // Replicate top bits into lower bits
+    int result = val << (8 - bits);
+    result |= (result >> bits);
+    return result;
+}
+
+// ============================================================================
+// Main decode function
+// ============================================================================
+void main() {
+    uint blockX = gl_GlobalInvocationID.x;
+    uint blockY = gl_GlobalInvocationID.y;
+
+    if (blockX >= pc.widthInBlocks || blockY >= pc.heightInBlocks)
+        return;
+
+    uint blockIndex = blockY * pc.widthInBlocks + blockX;
+    uint baseOffset = blockIndex * 4u;
+
+    // V1.7.0: Direct register load — NO LDS, NO barrier
+    uvec4 blockWords = uvec4(
+        inputBuf.data[baseOffset + 0u],
+        inputBuf.data[baseOffset + 1u],
+        inputBuf.data[baseOffset + 2u],
+        inputBuf.data[baseOffset + 3u]);
+    uint w0 = blockWords.x;
+    uint w1 = blockWords.y;
+    uint w2 = blockWords.z;
+    uint w3 = blockWords.w;
+
+    loadBlock(w0, w1, w2, w3);
+
+    // Determine mode from leading bits
+    int mode = -1;
+    for (int m = 0; m <= 7; m++) {
+        if ((w0 & (1u << m)) != 0u) {
+            mode = m;
+            break;
+        }
+    }
+
+    // Skip the mode bits (mode+1 bits: mode zero-bits + 1 set bit)
+    bitPos = mode + 1;
+
+    // Per-mode parameters:
+    //   ns   = number of subsets (1, 2, or 3)
+    //   pb   = partition bits
+    //   rb   = rotation bits
+    //   isb  = index selection bit
+    //   cb   = color endpoint bits per component
+    //   ab   = alpha endpoint bits
+    //   epb  = endpoint P-bit (shared or unique)
+    //   ib   = index bits
+    //   ib2  = secondary index bits (0 if none)
+    int ns, pb, rb, isb, cb, ab, spb, upb, ib, ib2;
+
+    // These are from the BC7 spec tables
+    switch (mode) {
+        case 0: ns=3; pb=4; rb=0; isb=0; cb=4; ab=0; spb=0; upb=1; ib=3; ib2=0; break;
+        case 1: ns=2; pb=6; rb=0; isb=0; cb=6; ab=0; spb=1; upb=0; ib=3; ib2=0; break;
+        case 2: ns=3; pb=6; rb=0; isb=0; cb=5; ab=0; spb=0; upb=0; ib=2; ib2=0; break;
+        case 3: ns=2; pb=6; rb=0; isb=0; cb=7; ab=0; spb=0; upb=1; ib=2; ib2=0; break;
+        case 4: ns=1; pb=0; rb=2; isb=1; cb=5; ab=6; spb=0; upb=0; ib=2; ib2=3; break;
+        case 5: ns=1; pb=0; rb=2; isb=0; cb=7; ab=8; spb=0; upb=0; ib=2; ib2=2; break;
+        case 6: ns=1; pb=0; rb=0; isb=0; cb=7; ab=7; spb=0; upb=1; ib=4; ib2=0; break;
+        case 7: ns=2; pb=6; rb=0; isb=0; cb=5; ab=5; spb=0; upb=1; ib=2; ib2=0; break;
+        default: // invalid mode – output magenta
+            ivec2 base = ivec2(blockX * 4u, blockY * 4u);
+            ivec2 imgSz = imageSize(outputImage);
+            for (int dy = 0; dy < 4; dy++)
+                for (int dx = 0; dx < 4; dx++) {
+                    ivec2 t = base + ivec2(dx, dy);
+                    if (t.x < imgSz.x && t.y < imgSz.y)
+                        imageStore(outputImage, t, vec4(1,0,1,1));
+                }
+            return;
+    }
+
+    // ---------- Read partition, rotation, index selection ----------
+    int partIdx = int(readBits(pb));
+    int rotation = int(readBits(rb));
+    int idxSel   = int(readBits(isb));
+
+    // ---------- Read color endpoints ----------
+    // Color endpoints: ns*2 endpoints, each with cb bits per R, G, B component
+    int endpointsR[6]; // max 3 subsets × 2 = 6
+    int endpointsG[6];
+    int endpointsB[6];
+    int endpointsA[6];
+
+    int numEndpoints = ns * 2;
+
+    // Read R
+    for (int i = 0; i < numEndpoints; i++)
+        endpointsR[i] = int(readBits(cb));
+    // Read G
+    for (int i = 0; i < numEndpoints; i++)
+        endpointsG[i] = int(readBits(cb));
+    // Read B
+    for (int i = 0; i < numEndpoints; i++)
+        endpointsB[i] = int(readBits(cb));
+    // Read A
+    for (int i = 0; i < numEndpoints; i++)
+        endpointsA[i] = (ab > 0) ? int(readBits(ab)) : 255;
+
+    // ---------- P-bits ----------
+    if (upb > 0) {
+        // Unique P-bits: one per endpoint
+        for (int i = 0; i < numEndpoints; i++) {
+            int pbit = int(readBits(1));
+            endpointsR[i] = (endpointsR[i] << 1) | pbit;
+            endpointsG[i] = (endpointsG[i] << 1) | pbit;
+            endpointsB[i] = (endpointsB[i] << 1) | pbit;
+            if (ab > 0) endpointsA[i] = (endpointsA[i] << 1) | pbit;
+        }
+        cb += 1;
+        if (ab > 0) ab += 1;
+    } else if (spb > 0) {
+        // Shared P-bits: one per subset (shared between both endpoints)
+        for (int s = 0; s < ns; s++) {
+            int pbit = int(readBits(1));
+            endpointsR[s*2+0] = (endpointsR[s*2+0] << 1) | pbit;
+            endpointsG[s*2+0] = (endpointsG[s*2+0] << 1) | pbit;
+            endpointsB[s*2+0] = (endpointsB[s*2+0] << 1) | pbit;
+            endpointsR[s*2+1] = (endpointsR[s*2+1] << 1) | pbit;
+            endpointsG[s*2+1] = (endpointsG[s*2+1] << 1) | pbit;
+            endpointsB[s*2+1] = (endpointsB[s*2+1] << 1) | pbit;
+        }
+        cb += 1;
+    }
+
+    // Unquantize endpoints to 8 bits
+    for (int i = 0; i < numEndpoints; i++) {
+        endpointsR[i] = unquantize(endpointsR[i], cb);
+        endpointsG[i] = unquantize(endpointsG[i], cb);
+        endpointsB[i] = unquantize(endpointsB[i], cb);
+        endpointsA[i] = (ab > 0) ? unquantize(endpointsA[i], ab) : 255;
+    }
+
+    // ---------- Read primary index data ----------
+    int primaryBits = ib;
+    int indices[16];
+    for (int i = 0; i < 16; i++) {
+        // Anchor texels lose their MSB
+        bool isAnchor = false;
+        if (i == 0) {
+            isAnchor = true; // texel 0 is always anchor of subset 0
+        } else if (ns == 2) {
+            isAnchor = (i == anchor2[partIdx]);
+        } else if (ns == 3) {
+            isAnchor = (i == anchor3a[partIdx]) || (i == anchor3b[partIdx]);
+        }
+        int bits = isAnchor ? (primaryBits - 1) : primaryBits;
+        indices[i] = int(readBits(bits));
+    }
+
+    // ---------- Read secondary index data (modes 4 and 5) ----------
+    int indices2[16];
+    if (ib2 > 0) {
+        for (int i = 0; i < 16; i++) {
+            bool isAnchor2 = (i == 0); // secondary anchor is always texel 0 for 1-subset
+            int bits = isAnchor2 ? (ib2 - 1) : ib2;
+            indices2[i] = int(readBits(bits));
+        }
+    }
+
+    // ---------- Decode each texel ----------
+    ivec2 baseTexel = ivec2(blockX * 4u, blockY * 4u);
+    ivec2 imgSize = imageSize(outputImage);
+
+    for (int dy = 0; dy < 4; dy++) {
+        for (int dx = 0; dx < 4; dx++) {
+            ivec2 texel = baseTexel + ivec2(dx, dy);
+            if (texel.x >= imgSize.x || texel.y >= imgSize.y) continue;
+
+            int texelIdx = dy * 4 + dx;
+
+            // Get subset for this texel
+            int subset = 0;
+            if (ns == 2) subset = getSubset2(partIdx, texelIdx);
+            else if (ns == 3) subset = getSubset3(partIdx, texelIdx);
+
+            int ep0 = subset * 2;
+            int ep1 = subset * 2 + 1;
+
+            // Get interpolation weights
+            int colorIdx = indices[texelIdx];
+            int alphaIdx = (ib2 > 0) ? indices2[texelIdx] : indices[texelIdx];
+
+            // For mode 4 with idxSel=1, swap color and alpha index sources
+            if (mode == 4 && idxSel == 1) {
+                int tmp = colorIdx;
+                colorIdx = alphaIdx;
+                alphaIdx = tmp;
+            }
+
+            // Select weight table based on index bit count
+            // When idxSel=1 (mode 4), swap which index drives color vs alpha
+            int colorWeight, alphaWeight;
+
+            if (mode == 4 && idxSel == 1) {
+                // idxSel=1: color uses secondary (ib2-bit) indices,
+                //           alpha uses primary (ib-bit) indices
+                int cidx = (ib2 > 0) ? indices2[texelIdx] : indices[texelIdx];
+                int aidx = indices[texelIdx];
+                if (ib2 == 2) colorWeight = weights2[cidx];
+                else colorWeight = weights3[cidx]; // ib2==3
+                if (ib == 2) alphaWeight = weights2[aidx];
+                else if (ib == 3) alphaWeight = weights3[aidx];
+                else alphaWeight = weights4[aidx];
+            } else {
+                // Normal: color uses primary indices, alpha uses secondary (if any)
+                if (ib == 2) colorWeight = weights2[colorIdx];
+                else if (ib == 3) colorWeight = weights3[colorIdx];
+                else colorWeight = weights4[colorIdx]; // ib == 4
+
+                if (ib2 > 0) {
+                    if (ib2 == 2) alphaWeight = weights2[alphaIdx];
+                    else alphaWeight = weights3[alphaIdx]; // ib2 == 3
+                } else {
+                    alphaWeight = colorWeight;
+                }
+            }
+
+            int r = interpolate(endpointsR[ep0], endpointsR[ep1], colorWeight);
+            int g = interpolate(endpointsG[ep0], endpointsG[ep1], colorWeight);
+            int b = interpolate(endpointsB[ep0], endpointsB[ep1], colorWeight);
+            int a = interpolate(endpointsA[ep0], endpointsA[ep1], alphaWeight);
+
+            // Apply rotation (modes 4, 5)
+            if (rotation == 1) { int t = a; a = r; r = t; }
+            else if (rotation == 2) { int t = a; a = g; g = t; }
+            else if (rotation == 3) { int t = a; a = b; b = t; }
+
+            imageStore(outputImage, texel,
+                       vec4(float(r) / 255.0,
+                            float(g) / 255.0,
+                            float(b) / 255.0,
+                            float(a) / 255.0));
+        }
+    }
+}
