@@ -1,0 +1,114 @@
+#version 450
+
+// Specialization constants for adaptive workgroup sizing
+layout(constant_id = 0) const uint WG_SIZE_X = 8u;
+layout(constant_id = 1) const uint WG_SIZE_Y = 8u;
+
+layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) readonly buffer CompressedInput {
+    uint data[];
+} compressedIn;
+
+layout(set = 0, binding = 1, rgba8) writeonly uniform image2D outImage;
+
+layout(std430, set = 0, binding = 2) readonly buffer MipTable {
+    uvec4 mipData[];
+} mipTable;
+
+layout(push_constant) uniform PushConstants {
+    uint blocksX;
+    uint blocksY;
+    uint compressedOffset;
+    uint outputOffset;
+    uint mipLevel;
+    uint mode;
+    uint mipCount;
+} pc;
+
+// LDS sized for max workgroup (128 for RDNA 3.5)
+shared uvec4 ldsBlocks[128];
+
+
+uvec4 fetchCompressedBlock(uint absoluteBlockIndex) {
+    uint base = absoluteBlockIndex * 4u;
+    return uvec4(
+        compressedIn.data[base + 0u],
+        compressedIn.data[base + 1u],
+        compressedIn.data[base + 2u],
+        compressedIn.data[base + 3u]);
+}
+
+void decodeStub(uvec4 blockWords, out vec4 color) {
+    color = unpackUnorm4x8(blockWords.x);
+}
+
+void decodeOneMip(uint mipLevel,
+                  uint blocksX,
+                  uint blocksY,
+                  uint compressedOffsetBytes,
+                  uint outputOffsetBytes) {
+    uint blockX = gl_GlobalInvocationID.x;
+    uint blockY = gl_GlobalInvocationID.y;
+    if (blockX >= blocksX || blockY >= blocksY) {
+        return;
+    }
+
+    uint localIdx = gl_LocalInvocationIndex;
+    uint blockIndex = blockY * blocksX + blockX;
+    uint baseBlock = compressedOffsetBytes / 16u;
+    ldsBlocks[localIdx] = fetchCompressedBlock(baseBlock + blockIndex);
+    memoryBarrierShared();
+    barrier();
+
+    vec4 decoded;
+    decodeStub(ldsBlocks[localIdx], decoded);
+
+    uint width = max(1u, blocksX * 4u);
+    uint texelX = blockX * 4u + (localIdx & 3u);
+    uint texelY = blockY * 4u + ((localIdx >> 2u) & 3u);
+    ivec2 dst = ivec2(int(texelX), int(texelY));
+    if (texelX < width) {
+        imageStore(outImage, dst, decoded);
+    }
+
+    memoryBarrierShared();
+    barrier();
+}
+
+void main() {
+    if (pc.mode == 0u) {
+        decodeOneMip(pc.mipLevel, pc.blocksX, pc.blocksY, pc.compressedOffset, pc.outputOffset);
+        return;
+    }
+
+    uint globalBlock = gl_GlobalInvocationID.y * pc.blocksX + gl_GlobalInvocationID.x;
+    for (uint i = 0u; i < pc.mipCount; ++i) {
+        uvec4 info = mipTable.mipData[i];
+        uint blocksX = info.x;
+        uint blocksY = info.y;
+        uint firstGlobalBlock = info.z;
+        uint blockCount = info.w;
+        if (globalBlock >= firstGlobalBlock && globalBlock < firstGlobalBlock + blockCount) {
+            uint localLinear = globalBlock - firstGlobalBlock;
+            uint blockY = localLinear / blocksX;
+            uint blockX = localLinear % blocksX;
+            uint localIdx = gl_LocalInvocationIndex;
+            uint baseBlock = (pc.compressedOffset / 16u) + firstGlobalBlock;
+            ldsBlocks[localIdx] = fetchCompressedBlock(baseBlock + localLinear);
+            memoryBarrierShared();
+            barrier();
+
+            vec4 decoded;
+            decodeStub(ldsBlocks[localIdx], decoded);
+
+            uint texelX = blockX * 4u + (localIdx & 3u);
+            uint texelY = blockY * 4u + ((localIdx >> 2u) & 3u);
+            imageStore(outImage, ivec2(int(texelX), int(texelY)), decoded);
+
+            memoryBarrierShared();
+            barrier();
+            return;
+        }
+    }
+}

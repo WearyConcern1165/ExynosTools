@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "name": "ExynosTools V3.1 Granite Edition",
+  "description": "Vulkan BCn decoder and Xclipse wrapper for Samsung Xclipse GPUs",
+  "author": "Marco",
+  "license": "MIT",
+  "packageVersion": "3.1.0",
+  "vendor": "Samsung",
+  "driverVersion": "3.1.0",
+  "minApi": 28,
+  "libraryName": "libvulkan_xclipse.so",
+  "repository": "https://github.com/WearyConcern1165/ExynosTools"
+}
