@@ -36,6 +36,9 @@ This branch was rebuilt to remove fragile wrapper behavior and keep a clean arch
 - `docs/`: validation and bring-up notes.
 - `VkLayer_exynostools.json.in`: layer manifest template.
 
+Key docs:
+- `docs/XCLIPSE_COMPAT_MATRIX.md`: Xclipse generation matrix and runtime decision rules for the wrapper.
+
 ## Build requirements
 
 - Android NDK (recommended 26.x)
