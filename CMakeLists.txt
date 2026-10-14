@@ -132,7 +132,8 @@ set_target_properties(VkLayer_VortekXclipse PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
 )
-if((CMAKE_SYSTEM_NAME STREQUAL "Android" OR (UNIX AND NOT APPLE)) AND
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/exports.map" AND
+   (CMAKE_SYSTEM_NAME STREQUAL "Android" OR (UNIX AND NOT APPLE)) AND
    CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_link_options(VkLayer_VortekXclipse PRIVATE
         "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.map"
@@ -222,8 +223,8 @@ if(EXYNOS_LAYER_BUILD_SHADERS)
             add_custom_command(
                 OUTPUT "${EMBEDDED_SHADER_HEADER}"
                 COMMAND "${CMAKE_COMMAND}"
-                    -DOUTPUT_FILE=${EMBEDDED_SHADER_HEADER}
-                    -DSPV_FILES=${SHADER_SPVS}
+                    "-DOUTPUT_FILE=${EMBEDDED_SHADER_HEADER}"
+                    "-DSPV_FILES=${SHADER_SPVS}"
                     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateEmbeddedSpirvHeader.cmake"
                 DEPENDS
                     ${SHADER_SPVS}

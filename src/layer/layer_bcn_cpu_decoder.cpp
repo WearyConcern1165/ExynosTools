@@ -119,13 +119,14 @@ void decode_block_to_rgba8(VkFormat format, const uint8_t* src, uint8_t* dst, ui
         case VK_FORMAT_BC4_UNORM_BLOCK:
         case VK_FORMAT_BC4_SNORM_BLOCK: {
             const bool signed_format = format == VK_FORMAT_BC4_SNORM_BLOCK;
-            bcdec_bc4(src, dst, static_cast<int>(pitch), signed_format ? 1 : 0);
+            uint8_t packed[16]{};
+            bcdec_bc4(src, packed, 4, signed_format ? 1 : 0);
             for (uint32_t y = 0; y < 4; ++y) {
                 uint8_t* row = dst + y * pitch;
                 for (uint32_t x = 0; x < 4; ++x) {
-                    const uint8_t r = row[x * 4];
-                    row[x * 4 + 1] = r;
-                    row[x * 4 + 2] = r;
+                    row[x * 4] = packed[y * 4 + x];
+                    row[x * 4 + 1] = 0;
+                    row[x * 4 + 2] = 0;
                     row[x * 4 + 3] = signed_format ? 127u : 255u;
                 }
             }
@@ -134,10 +135,13 @@ void decode_block_to_rgba8(VkFormat format, const uint8_t* src, uint8_t* dst, ui
         case VK_FORMAT_BC5_UNORM_BLOCK:
         case VK_FORMAT_BC5_SNORM_BLOCK: {
             const bool signed_format = format == VK_FORMAT_BC5_SNORM_BLOCK;
-            bcdec_bc5(src, dst, static_cast<int>(pitch), signed_format ? 1 : 0);
+            uint8_t packed[32]{};
+            bcdec_bc5(src, packed, 8, signed_format ? 1 : 0);
             for (uint32_t y = 0; y < 4; ++y) {
                 uint8_t* row = dst + y * pitch;
                 for (uint32_t x = 0; x < 4; ++x) {
+                    row[x * 4] = packed[(y * 4 + x) * 2];
+                    row[x * 4 + 1] = packed[(y * 4 + x) * 2 + 1];
                     row[x * 4 + 2] = 0;
                     row[x * 4 + 3] = signed_format ? 127u : 255u;
                 }
