@@ -297,7 +297,7 @@ void apply_layer_settings_from_create_info(const VkInstanceCreateInfo* pCreateIn
         return;
     }
 
-#ifdef VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT
+#ifdef VK_EXT_layer_settings
     auto* current = reinterpret_cast<const VkBaseInStructure*>(pCreateInfo->pNext);
     while (current) {
         if (current->sType == VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT) {
